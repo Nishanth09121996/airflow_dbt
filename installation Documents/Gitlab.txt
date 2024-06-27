@@ -1,0 +1,15 @@
+sudo apt-get install gitlab-ce=17.1.1-ce.0
+
+GitLab was unable to detect a valid hostname for your instance.
+Please configure a URL for your GitLab instance by setting `external_url`
+configuration in /etc/gitlab/gitlab.rb file.
+sudo ufw enable
+sudo ufw allow http
+sudo ufw allow https
+sudo ufw allow Postfix
+$ sudo EXTERNAL_URL="https://gitlab-server.example.com" apt-get install gitlab-ee
+
+efdyN0BKkyC/0kAkD/6sB2Rdb3nGkeL9Q2nV0cDB9Zs=
+
+-- Start Stop 
+sudo gitlab-ctl stop

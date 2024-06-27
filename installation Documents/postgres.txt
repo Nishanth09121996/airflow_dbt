@@ -1,0 +1,6 @@
+CREATE USER amin WITH PASSWORD 'amin';
+CREATE USER airflow_user WITH PASSWORD 'admin' SUPERUSER;
+GRANT ALL PRIVILEGES ON DATABASE sales TO airflow_user;
+-- To Start and stop Postgres
+sudo systemctl stop postgresql
+sudo systemctl Start postgresql
