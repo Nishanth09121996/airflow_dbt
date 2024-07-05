@@ -4,8 +4,10 @@ from sqlalchemy import create_engine
 import psycopg2
 from airflow import DAG
 from airflow.operators.python_operator import PythonOperator
-from airflow.operators.dummy import DummyOperator
+from airflow.operators.empty import EmptyOperator
 from airflow.utils.dates import days_ago
+from airflow.utils.task_group import TaskGroup
+from airflow.operators.bash import BashOperator
 
 def load_to_postgress(df:pd.DataFrame,table_name:str):
     engine = create_engine('postgresql://airflow_user:admin@localhost:5432/sales')
@@ -49,87 +51,112 @@ default_args = {
 }
 
 # Define the DAG
-adventure_dag = DAG(
+with DAG(
     'load_adventure_works_data',
     default_args=default_args,
     description='A Dag Pushes data to postgres',
     schedule_interval=None,  # Run once, no schedule interval
-)
+) as adventure_dag:
+    
+    start = BashOperator(
+        task_id = 'start_of_load',
+        dag = adventure_dag,
+        bash_command='echo "Data Load Started"'
+    )
 
-start = DummyOperator(
-    task_id = 'start_of_load',
-    dag = adventure_dag
-)
+    with TaskGroup('load_all_product_data') as load_all_product_data:
+        # loading Category Data
+        load_category = PythonOperator(
+            task_id = 'load_category_data',
+            dag = adventure_dag,
+            python_callable = load_to_postgress,
+            op_args = [ad_category,'dim_product_category']
+        )
 
-load_calendar  = PythonOperator(
-        task_id='load_calendar',
-    python_callable=load_to_postgress,
-    dag=adventure_dag,
-    op_args=[ad_calendar, 'dim_calendar'],
-)
+        load_subcategory = PythonOperator(
+            task_id="python_task",
+            python_callable=load_to_postgress,
+            dag = adventure_dag,
+            op_args= [ad_subcategory,'dim_product_subcategory'],
+        )
 
-# Loading customer data
-load_customers = PythonOperator(
-    task_id = 'load_customers',
-    dag = adventure_dag,
-    python_callable = load_to_postgress,
-    op_args=[ad_customers, 'dim_customer'],
-)
+        # loading Product information
 
-# loading Category Data
+        load_products  = PythonOperator(
+            task_id = 'load_products_data',
+            dag = adventure_dag,
+            python_callable = load_to_postgress,
+            op_args = [ad_products,'dim_products']
+        )
+        
+        echo_product_load=BashOperator(
+                    task_id="echo_product_load",
+                    bash_command='echo "Product Data Loaded"',
+                    dag = adventure_dag
+                    )
+        [load_category,load_subcategory,load_products] >> echo_product_load
+        
+    with TaskGroup('load_all_customer_data') as load_all_customer_data:
+        # Loading Calendar
+        load_calendar  = PythonOperator(
+            task_id='load_calendar',
+            python_callable=load_to_postgress,
+            dag=adventure_dag,
+            op_args=[ad_calendar, 'dim_calendar'],
+            )
 
-load_category = PythonOperator(
-    task_id = 'load_category_data',
-    dag = adventure_dag,
-    python_callable = load_to_postgress,
-    op_args = [ad_category,'dim_product_category']
-)
+        # Loading customer data
+        load_customers = PythonOperator(
+            task_id = 'load_customers',
+            dag = adventure_dag,
+            python_callable = load_to_postgress,
+            op_args=[ad_customers, 'dim_customer'],
+        )
 
-load_subcategory = PythonOperator(
-    task_id="python_task",
-    python_callable=load_to_postgress,
-    dag = adventure_dag,
-    op_args= [ad_subcategory,'dim_product_subcategory'],
-)
+        # Logger
+        echo_customer = BashOperator(task_id = 'echo_customer',
+                                     dag = adventure_dag,
+                                     bash_command='echo "Customer Data Loaded"')
+        load_calendar >> load_customers >> echo_customer
 
-# loading Product information
 
-load_products  = PythonOperator(
-    task_id = 'load_products_data',
-    dag = adventure_dag,
-    python_callable = load_to_postgress,
-    op_args = [ad_products,'dim_products']
-)
+    with TaskGroup('load_all_fact_data') as load_all_fact_data:
+        # Load Returns
+        load_returns = PythonOperator(
+            task_id  = 'load_returns',
+            dag = adventure_dag,
+            python_callable = load_to_postgress,
+            op_args = [ad_returns,'dim_returns']
+        )
 
-# Load Returns
-load_returns = PythonOperator(
-    task_id  = 'load_returns',
-    dag = adventure_dag,
-    python_callable = load_to_postgress,
-    op_args = [ad_returns,'dim_returns']
-)
+        # Load sales 
 
-# Load sales 
+        load_sales = PythonOperator(
+            task_id = 'load_sales_data',
+            python_callable = load_to_postgress,
+            dag = adventure_dag,
+            op_args = [ad_sales,'fact_sales']
+        )
 
-load_sales = PythonOperator(
-    task_id = 'load_sales_data',
-    python_callable = load_to_postgress,
-    dag = adventure_dag,
-    op_args = [ad_sales,'fact_sales']
-)
+        # load_territories 
 
-# load_territories 
+        load_territories = PythonOperator(
+            task_id = 'load_territory_data',
+            python_callable = load_to_postgress,
+            dag = adventure_dag,
+            op_args = [ad_territories,'dim_territories']
+        ) 
+        # Logger
+        echo_facts = BashOperator(task_id = 'echo_facts',
+                                     dag = adventure_dag,
+                                     bash_command='echo "Fact Data Loaded"')
+        
+        load_territories >> [load_returns,load_sales] >> echo_facts
 
-load_territories = PythonOperator(
-    task_id = 'load_territory_data',
-    python_callable = load_to_postgress,
-    dag = adventure_dag,
-    op_args = [ad_territories,'dim_territories']
-) 
+    end_of_load = BashOperator(
+        task_id = 'end_of_load',
+        dag = adventure_dag,
+        bash_command='echo "Data Loaded Succesfully"'
+    )
 
-end_of_load = DummyOperator(
-    task_id = 'end_of_load',
-    dag = adventure_dag
-)
-
-start>>load_calendar>>load_customers>>load_category>>load_subcategory>>load_products>>load_returns>>load_sales>>load_territories>>end_of_load
+start>>load_all_product_data>>load_all_customer_data>>load_all_fact_data>>end_of_load

@@ -5,6 +5,7 @@ from airflow import DAG
 from airflow.operators.python_operator import PythonOperator
 from airflow.operators.empty import EmptyOperator
 from airflow.utils.dates import days_ago
+from airflow.utils.task_group import TaskGroup
 
 
 def load_to_postgress():
